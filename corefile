@@ -1,0 +1,11 @@
+.:53 {
+    rewrite ANY HINFO
+    proxy . 8.8.8.8:53
+
+    file /zones/cluster.local cluster.local {
+      transfer to *
+    }
+
+    errors stdout
+    log stdout
+}

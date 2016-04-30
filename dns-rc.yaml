@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: kube2coredns
+  labels:
+    k8s-app: kube2coredns
+spec:
+  replicas: 1
+  selector:
+    k8s-app: kube2coredns
+  template:
+    metadata:
+      labels:
+        k8s-app: kube2coredns
+        name: kube2coredns
+    spec:
+      hostNetwork: true
+      containers:
+      - image: aledbf/kube-2-coredns:0.1
+        name: kube2coredns
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+        env:
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
