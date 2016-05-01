@@ -41,6 +41,8 @@ var (
 type dnsController struct {
 	client *client.Client
 
+	domain string
+
 	podController  *framework.Controller
 	endpController *framework.Controller
 	svcController  *framework.Controller
@@ -49,7 +51,7 @@ type dnsController struct {
 	svcLister  cache.StoreToServiceLister
 	endpLister cache.StoreToEndpointsLister
 
-	backend *backend
+	backend backend
 
 	// stopLock is used to enforce only a single call to Stop is active.
 	// Needed because we allow stopping through an http endpoint and
@@ -63,6 +65,7 @@ type dnsController struct {
 func newdnsController(domain string, kubeClient *client.Client, resyncPeriod time.Duration) (*dnsController, error) {
 	dns := dnsController{
 		client: kubeClient,
+		domain: domain,
 		stopCh: make(chan struct{}),
 	}
 

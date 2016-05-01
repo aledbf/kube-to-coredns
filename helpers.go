@@ -28,6 +28,13 @@ import (
 	"k8s.io/kubernetes/pkg/client/cache"
 )
 
+const (
+	// A subdomain added to the user specified domain for all services.
+	serviceSubdomain = "svc"
+	// A subdomain added to the user specified dmoain for all pods.
+	podSubdomain = "pod"
+)
+
 // Generates records for a headless service.
 func (dns *dnsController) newHeadlessService(subdomain string, service *api.Service) error {
 	// Create an A record for every pod in the service.
@@ -56,7 +63,7 @@ func (dns *dnsController) newHeadlessService(subdomain string, service *api.Serv
 func (dns *dnsController) generateRecordsForHeadlessService(fqdn string, e *api.Endpoints, svc *api.Service) error {
 	for idx := range e.Subsets {
 		for subIdx := range e.Subsets[idx].Addresses {
-			dns.backend.Add(aRecord(fqdn, e.Subsets[idx].Addresses[subIdx].IP, 0))
+			dns.backend.AddHost(fqdn, e.Subsets[idx].Addresses[subIdx].IP)
 			for portIdx := range e.Subsets[idx].Ports {
 				endpointPort := &e.Subsets[idx].Ports[portIdx]
 				portSegment := buildPortSegmentString(endpointPort.Name, endpointPort.Protocol)
@@ -77,7 +84,7 @@ func (dns *dnsController) getServiceFromEndpoints(e *api.Endpoints) (*api.Servic
 	if err != nil {
 		return nil, err
 	}
-	obj, exists, err := dns.servicesStore.GetByKey(key)
+	obj, exists, err := dns.svcLister.GetByKey(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service object from services store - %v", err)
 	}
@@ -100,8 +107,13 @@ func (dns *dnsController) addDNSUsingEndpoints(subdomain string, e *api.Endpoint
 		// No headless service found corresponding to endpoints object.
 		return nil
 	}
-	// Remove existing DNS entry.
-	dns.backend.Remove(subdomain)
+
+	for _, ss := range e.Subsets {
+		for _, addr := range ss.Addresses {
+			// Remove existing DNS entry.
+			dns.backend.RemoveHost(subdomain, addr.IP)
+		}
+	}
 
 	return dns.generateRecordsForHeadlessService(subdomain, e, svc)
 }
@@ -118,7 +130,7 @@ func (dns *dnsController) handlePodCreate(obj interface{}) {
 		// If the pod ip is not yet available, do not attempt to create.
 		if e.Status.PodIP != "" {
 			fqdn := buildDNSNameString(dns.domain, podSubdomain, e.Namespace, santizeIP(e.Status.PodIP))
-			dns.backend.Add(aRecord(fqdn, e.Status.PodIP, 0))
+			dns.backend.AddHost(fqdn, e.Status.PodIP)
 		}
 	}
 }
@@ -144,13 +156,13 @@ func (dns *dnsController) handlePodDelete(obj interface{}) {
 	if e, ok := obj.(*api.Pod); ok {
 		if e.Status.PodIP != "" {
 			fqdn := buildDNSNameString(dns.domain, podSubdomain, e.Namespace, santizeIP(e.Status.PodIP))
-			dns.backend.Remove(fqdn)
+			dns.backend.RemoveHost(fqdn, e.Status.PodIP)
 		}
 	}
 }
 
 func (dns *dnsController) generateRecordsForPortalService(fqdn string, service *api.Service) error {
-	dns.backend.Add(aRecord(fqdn, service.Spec.ClusterIP, 0))
+	dns.backend.AddHost(fqdn, service.Spec.ClusterIP)
 	// Generate SRV Records
 	for i := range service.Spec.Ports {
 		port := &service.Spec.Ports[i]
@@ -180,9 +192,9 @@ func buildPortSegmentString(portName string, portProtocol api.Protocol) string {
 	return fmt.Sprintf("_%s._%s", portName, strings.ToLower(string(portProtocol)))
 }
 
-func (dns *dnsController) generateSRVRecord(subdomain, portSegment, cName string, portNumber int) {
+func (dns *dnsController) generateSRVRecord(subdomain, portSegment, cName string, portNumber int32) {
 	recordKey := buildDNSNameString(subdomain, portSegment)
-	dns.backend.Add(srvRecord(recordKey, cName, portNumber, 0))
+	dns.backend.AddSrv(recordKey, cName, portNumber)
 }
 
 func (dns *dnsController) addDNS(fqdn string, service *api.Service) error {
@@ -218,7 +230,7 @@ func (dns *dnsController) handleServiceCreate(obj interface{}) {
 func (dns *dnsController) handleServiceRemove(obj interface{}) {
 	if s, ok := obj.(*api.Service); ok {
 		fqdn := buildDNSNameString(dns.domain, serviceSubdomain, s.Namespace, s.Name)
-		dns.backend.Remove(fqdn)
+		dns.backend.RemoveHost(fqdn, s.Spec.ClusterIP)
 	}
 }
 

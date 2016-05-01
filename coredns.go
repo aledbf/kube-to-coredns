@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io/ioutil"
+
 	"github.com/golang/glog"
 	"github.com/miekg/coredns/core"
 )
@@ -9,11 +11,8 @@ type backend interface {
 	AddHost(fqdn, ip string) error
 	RemoveHost(fqdn, ip string) error
 
-	AddCname(alias, fqdn string) error
-	RemoveCname(alias string) error
-
-	AddSrv(fqdn, target string, port int) error
-	RemoveSrv(fqdn, target string, port int) error
+	AddSrv(fqdn, target string, port int32) error
+	RemoveSrv(fqdn, target string, port int32) error
 
 	Start()
 }
@@ -24,18 +23,29 @@ type coredns struct {
 	cfg core.Input
 }
 
-func newDNSServer(domain string) (*backend, error) {
-	corefile, err := core.LoadCorefile("/corefile")
+func newDNSServer(domain string) (backend, error) {
+	contents, err := ioutil.ReadFile("/corefile")
 	if err != nil {
 		return nil, err
 	}
 
-	return &coredns{
+	corefile, err := core.LoadCorefile(func() (core.Input, error) {
+		return core.CorefileInput{
+			Contents: contents,
+			RealFile: false,
+		}, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return coredns{
 		cfg: corefile,
 	}, nil
 }
 
-func (c *coredns) Start() {
+func (c coredns) Start() {
 	err := core.Start(c.cfg)
 	if err != nil {
 		glog.Fatalf("unexpected error starting coredns: %v", err)
@@ -44,26 +54,18 @@ func (c *coredns) Start() {
 	core.Wait()
 }
 
-func (c *coredns) AddHost(fqdn, ip string) error {
+func (c coredns) AddHost(fqdn, ip string) error {
 	return nil
 }
 
-func (c *coredns) RemoveHost(fqdn, ip string) error {
+func (c coredns) RemoveHost(fqdn, ip string) error {
 	return nil
 }
 
-func (c *coredns) AddCname(alias, fqdn string) error {
+func (c coredns) AddSrv(fqdn, target string, port int32) error {
 	return nil
 }
 
-func (c *coredns) RemoveCname(alias string) error {
-	return nil
-}
-
-func (c *coredns) AddSrv(fqdn, target string, port int) error {
-	return nil
-}
-
-func (c *coredns) RemoveSrv(fqdn, target string, port int) error {
+func (c coredns) RemoveSrv(fqdn, target string, port int32) error {
 	return nil
 }

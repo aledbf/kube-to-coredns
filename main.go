@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
@@ -15,6 +18,9 @@ var (
 
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
         cluster for creating the client`)
+
+	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
+		`Relist and confirm cloud resources this often.`)
 
 	argDomain = flag.String("domain", "cluster.local", "domain under which to create names")
 )
@@ -43,6 +49,10 @@ func main() {
 		domain = fmt.Sprintf("%s.", domain)
 	}
 
-	ks := newdnsController(domain, kubeClient, resyncPeriod)
+	ks, err := newdnsController(domain, kubeClient, *resyncPeriod)
+	if err != nil {
+		glog.Fatalf("error creating dns controller: %v", err)
+	}
+
 	ks.Run()
 }
